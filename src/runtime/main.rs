@@ -6,7 +6,7 @@ use super::super::parser::expressions::{Expression, Expression::*};
 use std::rc::Rc;
 use std::boxed::Box;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct LambdaFunction {
     env: Rc<Env>,
     arg_names: Vec<String>,
@@ -30,18 +30,18 @@ impl LambdaFunction {
                     _ => ()
                 });
         let subenv = Rc::new(self.env.subenv(new_vars));
-        return subenv.eval(self.body.clone()).1
+        return subenv.eval(&self.body).1
     }
 }
 
-#[derive(Clone)]
-enum RuntimeFunctionWrapper {
+#[derive(Debug, Clone)]
+pub enum RuntimeFunctionWrapper {
     Immediate(fn (Rc<Env>, Vec<Rc<Value>>) -> (Rc<Env>, Rc<Value>)),
-    Symbolic(fn (Rc<Env>, Vec<Rc<Expression>>) -> (Rc<Env>, Rc<Value>))
+    Symbolic(fn (Rc<Env>, Vec<Box<Expression>>) -> (Rc<Env>, Rc<Value>))
 }
 
-#[derive(Clone)]
-enum Value {
+#[derive(Debug, Clone)]
+pub enum Value {
     Nil,
     Lambda(LambdaFunction),
     RuntimeFunction(RuntimeFunctionWrapper),
@@ -50,11 +50,17 @@ enum Value {
     Str(String)
 }
 
+#[derive(Debug, Clone)]
 pub struct Env {
     table: HashMap<String, Rc<Value>>
 }
 
 impl Env {
+    pub fn from_table(table: HashMap<String, Rc<Value>>) -> Self {
+        Env {
+            table: table
+        }
+    }
     pub fn new() -> Self {
         Env {
             table: HashMap::new()
@@ -62,7 +68,7 @@ impl Env {
     }
     fn subenv(&self, new_vars: HashMap<String, Rc<Value>>) -> Self {
         Env {
-            table: new_vars.union(self.table)
+            table: new_vars.union(self.table.clone())
         }
     }
     fn add_name(self: &Self, name: String, value: Rc<Value>) -> Self {
@@ -80,7 +86,7 @@ impl Env {
         return match expr {
             ListExpr(contents) => self.eval_list(contents.to_vec()),
             SExpr(rator, rands) => self.eval_sexpr(rator.clone(), rands.to_vec()),
-            LetExpr(name, rhs) => self.eval_let(name.to_string(), rhs.clone()),
+            LetExpr(name, rhs) => self.eval_let(name.to_string(), rhs),
             LambdaExpr(arg_list, body) => self.eval_lambda(arg_list.to_vec(), body.clone()),
             LookupExpr(name) => {
                 let val = self.lookup(name);
@@ -91,25 +97,25 @@ impl Env {
             StringLiteral(v) => (self, Rc::new(Value::Str(v.to_string())))
         }
     }
-    fn eval_list(self: Rc<Self>, contents: Vec<Rc<Expression>>) -> (Rc<Self>, Rc<Value>) {
+    fn eval_list(self: Rc<Self>, contents: Vec<Box<Expression>>) -> (Rc<Self>, Rc<Value>) {
         if contents.len() == 0 {
             return (self, Rc::new(Value::Nil));
         }
         let cons = self.lookup(&String::from("cons"));
         return (self, cons);
     }
-    fn eval_sexpr(self: Rc<Self>, rator: Rc<Expression>, rands: Vec<Rc<Expression>>) -> (Rc<Self>, Rc<Value>) {
-        let (mut env, func) = match *rator.clone() {
-            SExpr(_, _) |
-            LookupExpr(_) |
-            LambdaExpr(_, _) |
-            LetExpr(_, _) => self.clone().eval(rator),
+    fn eval_sexpr(self: Rc<Self>, rator: Box<Expression>, rands: Vec<Box<Expression>>) -> (Rc<Self>, Rc<Value>) {
+        let (mut env, func) = match &*rator {
+            expr @ SExpr(_, _) |
+            expr @ LookupExpr(_) |
+            expr @ LambdaExpr(_, _) |
+            expr @ LetExpr(_, _) => self.clone().eval(expr),
             _ => panic!("Cannot evaluate rator for s-expr")
         };
         return match &*func {
             Value::Lambda(lambda) => {
                 let arguments = rands.into_iter().map(|a| {
-                    let res = env.clone().eval(a);
+                    let res = env.clone().eval(&a);
                     match res {
                         (new_env, val) => {
                             env = new_env;
@@ -122,7 +128,7 @@ impl Env {
             Value::RuntimeFunction(RuntimeFunctionWrapper::Symbolic(internal)) => internal(self, rands),
             Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(internal)) => {
                 let arguments = rands.into_iter().map(|a| {
-                    let res = env.clone().eval(a);
+                    let res = env.clone().eval(&a);
                     match res {
                         (new_env, val) => {
                             env = new_env;
@@ -135,7 +141,7 @@ impl Env {
             _ => panic!("Bad rator for s-expr")
         }
     }
-    fn eval_let(self: Rc<Self>, name: String, rhs: Rc<Expression>) -> (Rc<Env>, Rc<Value>) {
+    fn eval_let(self: Rc<Self>, name: String, rhs: &Expression) -> (Rc<Env>, Rc<Value>) {
         let (env, value) = self.clone().eval(rhs);
         return (Rc::new(env.add_name(name, value)), Rc::new(Value::Nil));
     }

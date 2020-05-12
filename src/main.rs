@@ -3,7 +3,8 @@ extern crate rustyline;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
-use std::io::{stdin, stdout};
+use std::rc::Rc;
+use either::*;
 
 mod lexer;
 mod parser;
@@ -12,11 +13,26 @@ use parser::main::Parser;
 
 fn main() {
     let mut rl = Editor::<()>::new();
+    let mut env = runtime::stdlib::build_standard_library();
     loop {
         match rl.readline("  > ") {
             Ok(buffer) => {
                 let mut p = Parser::new(&buffer, 0);
-                println!("{:?}", p.parse(false))
+                while !p.is_finished() {
+                    let tree = p.parse(false);
+                    match tree {
+                        Either::Left(expr) => {
+                            match env.eval(&expr) {
+                                (new_env, res) => {
+                                    println!("{:?}", res);
+                                    env = new_env;
+                                }
+                            }
+                            
+                        },
+                        Either::Right(_) => {}
+                    }
+                }
             },
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

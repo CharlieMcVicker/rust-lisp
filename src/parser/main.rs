@@ -25,6 +25,9 @@ impl<'a> Parser<'a> {
     fn next(&mut self) {
         self.current = self.lexer.lex();
     }
+    pub fn is_finished(&self) -> bool {
+        self.lexer.is_finished()
+    }
     pub fn parse(&mut self, skip_quote: bool) -> Either<Expression, Token> {
         self.next();
         if skip_quote {
@@ -68,7 +71,6 @@ impl<'a> Parser<'a> {
     }
     fn parse_sexpr(&mut self, skip_quote: bool) -> Expression {
         if self.current.as_ref().map_or(false, |c| *c != Token::OpenPar) {
-            println!("{:?}", self.current);
             panic!("Missing open paren at start of sexpr");
         }
         let func = self.parse(skip_quote);
@@ -80,8 +82,8 @@ impl<'a> Parser<'a> {
         }
         match func {
             Right(Token::KeywordToken(keyword)) => match keyword {
-                Let => self.parse_let_expr(args),
-                Lambda => self.parse_lambda_expr(args)
+                Keyword::Lambda => self.parse_lambda_expr(args),
+                Keyword::Let => self.parse_let_expr(args),
             },
             Left(expr) => Expression::SExpr(Box::new(expr), args),
             _ => panic!("Bad function in s-expr")
