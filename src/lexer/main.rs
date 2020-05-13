@@ -71,6 +71,9 @@ impl<'a> Lexer<'a> {
             if self.current == '\\' {
                 self.next();
             }
+            if self.current == '\0' {
+                return None;
+            }
             lexeme.push(self.current);
             self.next();
         }
