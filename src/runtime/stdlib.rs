@@ -34,8 +34,8 @@ fn try_fold_ints(mut args: Vec<Rc<Value>>, i_base: i32, i_fold: IFold, f_base: f
 fn fold_floats(mut args: Vec<Rc<Value>>, f_base: f32, f_fold: FFold) -> f32 {
     match args.pop() {
         Some(v) => match *v {
-            Value::Int(num) => f_fold(fold_floats(args, f_base, f_fold), num as f32),
-            Value::Float(num) => f_fold(fold_floats(args, f_base, f_fold), num),
+            Value::Int(num) => f_fold(num as f32, fold_floats(args, f_base, f_fold)),
+            Value::Float(num) => f_fold(num, fold_floats(args, f_base, f_fold)),
             _ => panic!("Bad values in add call")
         },
         None => f_base
@@ -114,16 +114,63 @@ fn fn_false(env: Rc<Env>, mut args: Vec<Box<Expression>>) -> (Rc<Env>, Rc<Value>
     (env, res)
 }
 
+fn fn_eq(env: Rc<Env>, mut args: Vec<Rc<Value>>) -> (Rc<Env>, Rc<Value>) {
+    if args.len() != 2 {
+        panic!("Malformed eq predicate");
+    }
+    let x = args.pop().unwrap();
+    let y = args.pop().unwrap();
+    let res = match &*x {
+        Value::Nil => match &*y {
+            Value::Nil => env.lookup(&String::from("true")),
+            _ => env.lookup(&String::from("false"))
+        },
+        Value::Int(a) => match &*y {
+            Value::Int(b) => if a == b {
+                env.lookup(&String::from("true"))
+            } else {
+                env.lookup(&String::from("false"))
+            },
+            _ => env.lookup(&String::from("false"))
+        },
+        Value::Float(a) => match &*y {
+            Value::Float(b) => if a == b {
+                env.lookup(&String::from("true"))
+            } else {
+                env.lookup(&String::from("false"))
+            },
+            _ => env.lookup(&String::from("false"))
+        },
+        Value::Str(a) => match &*y {
+            Value::Str(b) => if a == b {
+                env.lookup(&String::from("true"))
+            } else {
+                env.lookup(&String::from("false"))
+            },
+            _ => env.lookup(&String::from("false"))
+        },
+        _ => env.lookup(&String::from("false"))
+    };
+    return (env, res);
+}
+
 pub fn build_standard_library() -> Rc<Env> {
+    // load in runtime builtins
+
     let mut table = HashMap::new();
     table.insert(String::from("+"), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(wrapped_add))));
     table.insert(String::from("-"), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(wrapped_sub))));
     table.insert(String::from("*"), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(wrapped_mul))));
     table.insert(String::from("/"), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(wrapped_div))));
+    table.insert(String::from("="), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(fn_eq))));
     table.insert(String::from("exit"), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(wrapped_exit))));
     table.insert(String::from("true"), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Symbolic(fn_true))));
     table.insert(String::from("false"), Rc::new(Value::RuntimeFunction(RuntimeFunctionWrapper::Symbolic(fn_false))));
-    let path = Path::new("../stdlib/core.scm");
+    table.insert(String::from("nil"), Rc::new(Value::Nil));
+
+    // load our standard libray
+
+    let path = Path::new("core.scm");
     let mut file = match File::open(&path) {
         Err(why) => panic!("couldn't open {}: {}", path.display(),
                                                    why.description()),
@@ -140,7 +187,7 @@ pub fn build_standard_library() -> Rc<Env> {
 
     let mut p = Parser::new(&buffer, 0);
     while !p.is_finished() {
-        let tree = p.parse(false);
+        let tree = p.parse(false).unwrap();
         match tree {
             Either::Left(expr) => {
                 match env.eval(&expr) {

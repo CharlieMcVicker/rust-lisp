@@ -14,24 +14,27 @@ use parser::main::Parser;
 fn main() {
     let mut rl = Editor::<()>::new();
     let mut env = runtime::stdlib::build_standard_library();
+    // let mut env = Rc::new(runtime::main::Env::new());
     loop {
         match rl.readline("  > ") {
             Ok(buffer) => {
                 let mut p = Parser::new(&buffer, 0);
                 while !p.is_finished() {
-                    let tree = p.parse(false);
-                    match tree {
-                        Either::Left(expr) => {
-                            match env.eval(&expr) {
-                                (new_env, res) => {
-                                    println!("{:?}", res);
-                                    env = new_env;
+                    match p.parse(false) {
+                        Ok(tree) => match tree {
+                            Either::Left(expr) => {
+                                match env.eval(&expr) {
+                                    (new_env, res) => {
+                                        println!("{:?}", res);
+                                        env = new_env;
+                                    }
                                 }
-                            }
-                            
+                                
+                            },
+                            Either::Right(_) => {}
                         },
-                        Either::Right(_) => {}
-                    }
+                        Err(err) => println!("{:?}", err)
+                    };
                 }
             },
             Err(ReadlineError::Interrupted) => {
