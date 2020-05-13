@@ -10,18 +10,28 @@ use std::boxed::Box;
 struct LambdaFunction {
     env: Rc<Env>,
     arg_names: Vec<String>,
-    body: Rc<Expression>
+    body: Rc<Expression>,
+    own_name: Option<String>
 }
 
 impl LambdaFunction {
-    fn new(env: Rc<Env>, arg_names: Vec<String>, body: Rc<Expression>) -> Self {
+    fn new_anonymous(env: Rc<Env>, arg_names: Vec<String>, body: Rc<Expression>) -> Self {
         return LambdaFunction {
             env: env,
             arg_names: arg_names,
-            body: body
+            body: body,
+            own_name: None
         }
     }
-    fn eval(&self, arguments: Vec<Rc<Value>>) -> Rc<Value> {
+    fn new_named(env: Rc<Env>, name: String, arg_names: Vec<String>, body: Rc<Expression>) -> Self {
+        LambdaFunction {
+            env: env,
+            arg_names: arg_names,
+            body: body,
+            own_name: Some(name)
+        }
+    }
+    fn eval(self: Rc<Self>, arguments: Vec<Rc<Value>>) -> Rc<Value> {
         let mut new_vars = HashMap::new();
         self.arg_names.iter()
             .zip(arguments.into_iter())
@@ -29,6 +39,12 @@ impl LambdaFunction {
                 match new_vars.insert(name.clone(), value) {
                     _ => ()
                 });
+        match &self.own_name {
+            Some(name) => {
+                new_vars.insert(name.to_string(), Rc::new(Value::Lambda(self.clone())));
+            },
+            None => {}
+        };
         let subenv = Rc::new(self.env.subenv(new_vars));
         return subenv.eval(&self.body).1
     }
@@ -43,7 +59,7 @@ pub enum RuntimeFunctionWrapper {
 #[derive(Debug, Clone)]
 pub enum Value {
     Nil,
-    Lambda(LambdaFunction),
+    Lambda(Rc<LambdaFunction>),
     RuntimeFunction(RuntimeFunctionWrapper),
     Int(i32),
     Float(f32),
@@ -76,7 +92,7 @@ impl Env {
             table: self.table.update(name, value)
         }
     }
-    fn lookup(&self, name: &String) -> Rc<Value> {
+    pub fn lookup(&self, name: &String) -> Rc<Value> {
         self.table.get(name)
             .map_or_else(
                 || Rc::new(Value::Nil),
@@ -123,7 +139,7 @@ impl Env {
                         }
                     }
                 }).collect();
-                (self, lambda.eval(arguments))
+                (self, lambda.clone().eval(arguments))
             },
             Value::RuntimeFunction(RuntimeFunctionWrapper::Symbolic(internal)) => internal(self, rands),
             Value::RuntimeFunction(RuntimeFunctionWrapper::Immediate(internal)) => {
@@ -138,15 +154,24 @@ impl Env {
                 }).collect();
                 internal(self, arguments)
             }
-            _ => panic!("Bad rator for s-expr")
+            _ => panic!("Bad rator for s-expr: {:?} ({:?})", func, rator)
         }
     }
     fn eval_let(self: Rc<Self>, name: String, rhs: &Expression) -> (Rc<Env>, Rc<Value>) {
-        let (env, value) = self.clone().eval(rhs);
-        return (Rc::new(env.add_name(name, value)), Rc::new(Value::Nil));
+        match rhs {
+            LambdaExpr(arg_list, body) => {
+                let lambda = LambdaFunction::new_named(self.clone(), name.clone(), arg_list.to_vec(), body.clone());
+                let value = Rc::new(Value::Lambda(Rc::new(lambda)));
+                return (Rc::new(self.add_name(name, value)), Rc::new(Value::Nil));
+            }
+            _  => {
+                let (env, value) = self.clone().eval(rhs);
+                return (Rc::new(env.add_name(name, value)), Rc::new(Value::Nil));
+            }
+        }
     }
     fn eval_lambda(self: Rc<Self>, arg_list: Vec<String>, body: Rc<Expression>) -> (Rc<Env>, Rc<Value>) {
-        let lambda = Rc::new(Value::Lambda(LambdaFunction::new(self.clone(), arg_list, body)));
+        let lambda = Rc::new(Value::Lambda(Rc::new(LambdaFunction::new_anonymous(self.clone(), arg_list, body))));
         return (self, lambda);
     }
 }
