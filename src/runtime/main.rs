@@ -73,16 +73,19 @@ pub struct Env {
 
 impl Env {
     pub fn from_table(table: HashMap<String, Rc<Value>>) -> Self {
+        println!("New env from table {:?}", table.keys().collect::<Vec<_>>());
         Env {
             table: table
         }
     }
     pub fn new() -> Self {
+        println!("New empty env");
         Env {
             table: HashMap::new()
         }
     }
     fn subenv(&self, new_vars: HashMap<String, Rc<Value>>) -> Self {
+        println!("New subenv {:?}", new_vars.keys().collect::<Vec<_>>());
         Env {
             table: new_vars.union(self.table.clone())
         }

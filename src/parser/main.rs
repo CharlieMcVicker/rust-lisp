@@ -43,15 +43,9 @@ impl<'a> Parser<'a> {
     }
     pub fn parse(&mut self, skip_quote: bool) -> Result<Either<Expression, Token>, SyntaxError> {
         self.next();
-        // TODO: consoldate matches with guard
-        if skip_quote {
-            match self.current {
-                Some(Token::OpenPar) => return self.parse_list_expr(skip_quote).map(Either::Left),
-                _ => {}
-            }
-        }
 
         return match &self.current {
+            Some(Token::OpenPar) if skip_quote => self.parse_list_expr(skip_quote).map(Either::Left),
             Some(Token::OpenPar) => self.parse_sexpr(skip_quote).map(Either::Left),
             Some(Token::QuoteToken) => self.parse_list_expr(skip_quote).map(Either::Left),
             Some(Token::IdentifierToken(lexeme)) => Ok(Left(Expression::LookupExpr(lexeme.to_string()))),

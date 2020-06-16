@@ -36,4 +36,5 @@
   )
 )
 (let (showlist z) (map print z))
-(let (fact n) ((= n 0) 1 (fact (- 1 n))))
+(let (fact n) ((= n 0) 1 (* n (fact (- 1 n)))))
+

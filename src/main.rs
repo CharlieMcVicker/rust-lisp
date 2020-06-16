@@ -4,6 +4,7 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
 use std::rc::Rc;
+use std::mem::size_of;
 use either::*;
 
 mod lexer;
@@ -15,6 +16,7 @@ fn main() {
     let mut rl = Editor::<()>::new();
     let mut env = runtime::stdlib::build_standard_library();
     // let mut env = Rc::new(runtime::main::Env::new());
+    // println!("Size of env {}", size_of::<runtime::main::Env>());
     loop {
         match rl.readline("  > ") {
             Ok(buffer) => {
